@@ -99,6 +99,16 @@ stdenv.mkDerivation (
         ])
       else
         lua.luaOnBuild;
+    nlua0Host = buildPackages.runCommandCC "neovim-nlua0-host-${finalAttrs.version}" { } ''
+      $CC -shared -fPIC -DNVIM_NLUA0 \
+        -I${finalAttrs.src}/src \
+        -I${lib.getDev lua.luaOnBuild}/include/luajit-2.1 \
+        ${finalAttrs.src}/src/mpack/*.c \
+        ${finalAttrs.src}/src/nlua0.c \
+        ${codegenLua}/lib/lua/5.1/lpeg.so \
+        -Wl,-rpath,${codegenLua}/lib/lua/5.1 \
+        -o $out
+    '';
 
   in
   {
@@ -233,6 +243,9 @@ stdenv.mkDerivation (
       (lib.cmakeBool "ENABLE_WASMTIME" true)
       (lib.cmakeFeature "WASMTIME_INCLUDE_DIR" "${lib.getDev wasmtime_36}/include")
       (lib.cmakeFeature "WASMTIME_LIBRARY" "${lib.getLib wasmtime_36}/lib/libwasmtime${stdenv.hostPlatform.extensions.sharedLibrary}")
+    ]
+    ++ lib.optionals (!stdenv.buildPlatform.canExecute stdenv.hostPlatform) [
+      (lib.cmakeFeature "NLUA0_HOST_PRG" "${nlua0Host}")
     ]
     ++ (
       if lua.pkgs.isLuaJIT then

@@ -132,6 +132,25 @@ let
 
   isWasi = stdenv.hostPlatform.isWasi;
 
+  rquickjsHasBundledBindings =
+    platform:
+    (
+      platform.isLinux
+      && lib.elem platform.parsed.cpu.name [
+        "aarch64"
+        "i686"
+        "loongarch64"
+        "x86_64"
+      ]
+    )
+    || (
+      platform.isDarwin
+      && lib.elem platform.parsed.cpu.name [
+        "aarch64"
+        "x86_64"
+      ]
+    );
+
 in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "tree-sitter";
@@ -186,6 +205,20 @@ rustPlatform.buildRustPackage (finalAttrs: {
       substituteInPlace crates/xtask/src/build_wasm.rs \
           --replace-fail 'let emcc_name = if cfg!(windows) { "emcc.bat" } else { "emcc" };' 'let emcc_name = "${lib.getExe' emscripten "emcc"}";'
     ''
+    # rquickjs is both a host and target dependency. Its bindgen invocation for
+    # the host dependency picks up the target libc headers when cross compiling.
+    # Use its bundled bindings where they cover both platforms instead.
+    +
+      lib.optionalString
+        (
+          stdenv.buildPlatform != stdenv.hostPlatform
+          && rquickjsHasBundledBindings stdenv.buildPlatform
+          && rquickjsHasBundledBindings stdenv.hostPlatform
+        )
+        ''
+          substituteInPlace crates/generate/Cargo.toml \
+            --replace-fail '  "bindgen",' '  # "bindgen", -- use rquickjs bundled bindings when cross compiling'
+        ''
     # when building on static platforms:
     # 1. remove the `libtree-sitter.$(SOEXT)` step from `all`
     # 2. remove references to shared object files in the Makefile
